@@ -6,6 +6,28 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <vector>
+#include <iostream>
+#include <fstream>
+#include <memory>
+
+#define H_FLOAT_MAX std::numeric_limits<float>::max()
+#define H_FLOAT_MIN std::numeric_limits<float>::min()
+#define H_DOUBLE_MAX std::numeric_limits<double>::max()
+#define H_DOUBLE_MIN std::numeric_limits<double>::min()
+
+template <class T>
+inline bool CheckInSize(const cv::Point_<T> &pt, const cv::Size &size)
+{
+	return pt.x >= 0 && pt.y >= 0 && pt.x <= (size.width - 1) && pt.y <= (size.height - 1);
+}
+
+cv::Scalar RandomColor()
+{
+	uchar b = rand() % 256;
+	uchar g = rand() % 256;
+	uchar r = rand() % 256;
+	return cv::Scalar(b, g, r);
+}
 
 inline void resizeShow(const std::string &name, const cv::Mat &img, bool sizeToScreen)
 {
@@ -40,18 +62,18 @@ inline void resizeShow(const std::string &name, const cv::Mat &img, bool sizeToS
 	}
 }
 
-inline int LoadSameSizeImages(std::vector<cv::Mat> &images, const std::string &dir, const std::string &image_suffix = "jpg")
+inline bool LoadSameSizeImages(std::vector<cv::Mat> &images, const std::string &dir, const std::string &image_suffix = "jpg")
 {
 	std::vector<std::string> filelist, templist;
 	{
-		TraverFolder traverfolder;
-		traverfolder.setFolderPath(dir);
-		if (!traverfolder.IsFind())
+		TraverFolder traver;
+		traver.setFolderPath(dir);
+		if (!traver.IsFind())
 		{
 			std::cout << "cannot open the folder " << dir << std::endl;
-			return -1;
+			return false;
 		}
-		traverfolder.getFileFullPath(templist, image_suffix);
+		traver.getFileFullPath(templist, image_suffix);
 		for (size_t i = 0; i < templist.size(); i++)
 		{
 			if (templist[i].find(image_suffix) != std::string::npos)
@@ -60,10 +82,10 @@ inline int LoadSameSizeImages(std::vector<cv::Mat> &images, const std::string &d
 		if (filelist.size() == 0)
 		{
 			std::cerr << "cannot find any images with image_suffix" << std::endl;
-			return -1;
+			return false;
 		}
 	}
-	cv::Size fish_image_size;
+	cv::Size image_size;
 
 
 	//¼ÓÔØÍ¼Æ¬
@@ -72,19 +94,38 @@ inline int LoadSameSizeImages(std::vector<cv::Mat> &images, const std::string &d
 	for (size_t i = 0; i < filelist.size(); i++, num_images++)
 	{
 		cv::Mat temp_image = cv::imread(filelist[i]);
-		if (i != 0 && temp_image.size() != fish_image_size)
+		if (i != 0 && temp_image.size() != image_size)
 			break;
-		if (i == 0)fish_image_size = temp_image.size();
+		if (i == 0)image_size = temp_image.size();
 		images.push_back(temp_image);
 
 	}
-	return 0;
+	return true;
 }
 
-#define H_FLOAT_MAX std::numeric_limits<float>::max()
-#define H_FLOAT_MIN std::numeric_limits<float>::min()
-#define H_DOUBLE_MAX std::numeric_limits<double>::max()
-#define H_DOUBLE_MIN std::numeric_limits<double>::min()
+inline bool LoadDiffSizeImages(std::vector<cv::Mat> &images, const std::string &dir, const std::string &image_suffix = "jpg")
+{
+	std::vector<std::string> vFileName;
+	TraverFolder traver(dir);
+	if (!traver.IsFind())
+	{
+		std::cout << "cannot open the folder " << dir << std::endl;
+		return false;
+	}
+	traver.getFileFullPath(vFileName, image_suffix);
+
+	std::for_each(vFileName.begin(), vFileName.end(),
+				  [&images](std::string &s) {
+		cv::Mat img = cv::imread(s);
+		if (img.empty())
+		{
+			std::cerr << "Failed to load the image with name " << s << std::endl;
+			return false;
+		}
+		images.push_back(img);
+	});
+	return true;
+}
 
 template <class T>
 bool GetOverlapRoi(const cv::Rect_<T> &roi1, const cv::Rect_<T> &roi2, cv::Rect_<T> &resultRoi)
@@ -116,20 +157,20 @@ cv::Rect_<T> GetUnionRoi(const cv::Rect_<T> &roi1, const cv::Rect_<T> &roi2)
 }
 
 template <class T>
-void PointHTransform(const cv::Point_<T> &srcpt, const cv::Mat &H, cv::Point_<T> &dstpt)
+bool PointHTransform(const cv::Point_<T> &srcpt, const cv::Mat &H, cv::Point_<T> &dstpt)
 {
 	const double *Hptr = reinterpret_cast<const double *>(H.data);
 	T z = srcpt.x * Hptr[6] + srcpt.y * Hptr[7] + Hptr[8];
-	if (abs(z) <= H_FLOAT_MIN)
+	if (abs(z) <= std::numeric_limits<T>::min())
 	{
-		dstpt.x = H_FLOAT_MAX;
-		dstpt.y = H_FLOAT_MAX;
+		return false;
 	}
 	else
 	{
 		T zinv = 1.0 / z;
 		dstpt.x = zinv*(srcpt.x * Hptr[0] + srcpt.y * Hptr[1] + Hptr[2]);
 		dstpt.y = zinv*(srcpt.x * Hptr[3] + srcpt.y * Hptr[4] + Hptr[5]);
+		return true;
 	}
 }
 
@@ -142,7 +183,8 @@ void GetRegularizedPoints(std::vector<cv::Point_<T>> &srcPts, std::vector<cv::Po
 	assert(pointsNum > 0);
 
 	dstPts.resize(pointsNum);
-	cv::Point_<T> central;
+	cv::Point_<T> central(0, 0);
+
 	for (size_t i = 0, j = 1; i < pointsNum; i++)
 	{
 		cv::Point_<T> &pt = srcPts[i];
@@ -154,29 +196,33 @@ void GetRegularizedPoints(std::vector<cv::Point_<T>> &srcPts, std::vector<cv::Po
 		j++;
 	}
 
-	T avgRadius = 0;
+	cv::Point_<T> avgRadius(0, 0);
 	for (size_t i = 0, j = 1; i < pointsNum; i++, j++)
 	{
 		dstPts[i] = srcPts[i] - central;
-		T r = sqrt(dstPts[i].dot(dstPts[i]));
+		cv::Point_<T> dist(std::abs(dstPts[i].x), std::abs(dstPts[i].y));
 
 		T a1 = 1.0 / j;
 		T a2 = (j - 1) * a1;
 
-		avgRadius = r*a1 + avgRadius*a2;
+		avgRadius = dist*a1 + avgRadius*a2;
 	}
 
-	T scale = sqrt((T)2) / avgRadius;
+	T scaleX = (T)1 / avgRadius.x;
+	T scaleY = (T)1 / avgRadius.y;
 
 	for (size_t i = 0; i < pointsNum; i++)
 	{
-		dstPts[i] *= scale;
+		dstPts[i].x *= scaleX;
+		dstPts[i].y *= scaleY;
 	}
 
-	T scaleinv = (T)1.0 / scale;
+	T scaleinvX = (T)1.0 / scaleX;
+	T scaleinvY = (T)1.0 / scaleY;
 
 	TInv = cv::Mat::eye(3, 3, CV_64F);
-	TInv.at<double>(0, 0) = TInv.at<double>(1, 1) = scaleinv;
+	TInv.at<double>(0, 0) = scaleinvX;
+	TInv.at<double>(1, 1) = scaleinvY;
 	TInv.at<double>(0, 2) = central.x;
 	TInv.at<double>(1, 2) = central.y;
 }

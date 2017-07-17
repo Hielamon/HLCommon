@@ -6,7 +6,7 @@
 #include <sstream>
 #include <memory>
 #include <chrono>
-#include <getTimeofDay.h>
+#include <commonMacro.h>
 
 //It's regretful that Multivideo cannot open 4 camera including the laptop's camera
 //but it's uneffect for this program
@@ -108,9 +108,23 @@ public:
 		}
 	}
 
-	void setSynchronizePoints(const std::vector<uint> &vFrameID)
+	void setSynchronizePoints(const std::vector<uint> &vFrameID, bool resetZero = false)
 	{
 		vBeginFrameID = vFrameID;
+		if (resetZero)
+		{
+			uint minID = std::numeric_limits<unsigned int>::max();
+			std::for_each(vBeginFrameID.begin(), vBeginFrameID.end(), [&minID](uint &id) {
+				if (id < minID)
+				{
+					minID = id;
+				}
+			});
+
+			std::for_each(vBeginFrameID.begin(), vBeginFrameID.end(), [&minID](uint &id) {
+				id -= minID;
+			});
+		}
 	}
 
 	void setVideoFile(const std::vector<std::string> &vVideoFile)
@@ -191,7 +205,7 @@ public:
 
 		std::chrono::time_point<std::chrono::steady_clock> start_t, end_t;
 		std::chrono::nanoseconds cost;
-		int count = 0, testCount = 0, delay = 1, testAmount = 200;
+		int count = 0, testCount = 0, delay = 1, testAmount = 1;
 		
 		start_t = std::chrono::high_resolution_clock::now();
 
@@ -203,15 +217,18 @@ public:
 			pFramesProcessor->process(vCurrentFrame, vResultFrames);
 
 			if (pFramesProcessor->getEsc())break;
-			end_t = std::chrono::high_resolution_clock::now();
-			cost = (std::chrono::duration_cast<std::chrono::nanoseconds>(end_t - start_t)) / testCount;
+			
 
 			if (bShowResultFrames && !ShowResultFrames(vResultFrames))break;
 
+			end_t = std::chrono::high_resolution_clock::now();
+			cost = std::chrono::duration_cast<std::chrono::nanoseconds>(end_t - start_t);
+
 			if (bShowTimeConsuming)
 			{
-				std::cout << count << ";  " << 1e9 / cost.count() << " fps" << ";  "
-					<< cost.count() * 1e-6 << " ms" << ";  " << std::endl;
+				long long costCount = cost.count() / testCount;
+				std::cout << count << ";  " << 1e9 / costCount << " fps" << ";  "
+					<< costCount * 1e-6 << " ms" << ";  " << std::endl;
 			}
 			
 
@@ -229,37 +246,55 @@ public:
 protected:
 	bool ReadNextFrames(std::vector<cv::Mat> &vFrame)
 	{
+		HL_INTERVAL_START
+
 		if (!vFrame.empty()) vFrame.clear();
 
-		std::vector<cv::Mat> vTempFrame;
-		for (size_t i = 0; i < videoNum; i++)
+		bool bSuccessOpen = true;
+
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif // _OPENMP
+		for (int i = 0; i < videoNum; i++)
 		{
 			if (!vCapture[i].grab())
 			{
 				std::cerr << "Failed to grab the " << i << " index camera" << std::endl;
-				return false;
+				bSuccessOpen = false;
 			}
 		}
 
-		for (size_t i = 0; i < videoNum; i++)
+		if (!bSuccessOpen)
 		{
-			cv::Mat temp_frame;
-			if (vCapture[i].retrieve(temp_frame))
-				vTempFrame.push_back(temp_frame);
-			else
+			return false;
+		}
+
+		std::vector<cv::Mat> vTempFrame(videoNum);
+
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif // _OPENMP
+		for (int i = 0; i < videoNum; i++)
+		{
+			if (!vCapture[i].retrieve(vTempFrame[i]))
 			{
-				vTempFrame.clear();
 				std::cerr << "Failed to retrieve the " << i << " index camera" << std::endl;
-				return false;
+				bSuccessOpen = false;
 			}
 		}
+
+		if (!bSuccessOpen)
+		{
+			return false;
+		}
+
 		vFrame = vTempFrame;
 		//****//***//***//用于usb接口软转换，仅用于本程序
 		//frame_array.push_back(temp_frame_array[0]);
 		//frame_array.push_back(temp_frame_array[1]);
 		//frame_array.push_back(temp_frame_array[2]);
 		//****//***//***//用于usb接口软转换，仅用于本程序
-
+		HL_INTERVAL_END
 		return true;
 	}
 
@@ -278,6 +313,8 @@ protected:
 
 	bool ShowResultFrames(const std::vector<cv::Mat> &vResult)
 	{
+		HL_INTERVAL_START
+
 		size_t length = vResult.size();
 		for (size_t i = 0; i < length; i++)
 		{
@@ -286,6 +323,8 @@ protected:
 		}
 		
 		if (length == 0 && cv::waitKey(1) == 27) return false;
+
+		HL_INTERVAL_END
 		return true;
 	}
 
@@ -336,6 +375,7 @@ protected:
 
 	//the synchronize points
 	std::vector<uint> vBeginFrameID;
+
 };
 
 
