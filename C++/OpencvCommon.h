@@ -10,10 +10,14 @@
 #include <fstream>
 #include <memory>
 
+
 #define H_FLOAT_MAX std::numeric_limits<float>::max()
 #define H_FLOAT_MIN std::numeric_limits<float>::min()
 #define H_DOUBLE_MAX std::numeric_limits<double>::max()
 #define H_DOUBLE_MIN std::numeric_limits<double>::min()
+
+////////////////////////////////////////////////////////////////////
+//The functions Related to the Size
 
 template <class T>
 inline bool CheckInSize(const cv::Point_<T> &pt, const cv::Size &size)
@@ -21,36 +25,13 @@ inline bool CheckInSize(const cv::Point_<T> &pt, const cv::Size &size)
 	return pt.x >= 0 && pt.y >= 0 && pt.x <= (size.width - 1) && pt.y <= (size.height - 1);
 }
 
-cv::Scalar RandomColor()
+inline void resizeShow(const std::string &name, const cv::Mat &img, bool sizeToScreen = true)
 {
-	uchar b = rand() % 256;
-	uchar g = rand() % 256;
-	uchar r = rand() % 256;
-	return cv::Scalar(b, g, r);
-}
-
-inline void resizeShow(const std::string &name, const cv::Mat &img, bool sizeToScreen)
-{
-	//space emptied : pixel
-	int edgeWidth = std::min(HL_SCREEN_WIDTH, HL_SCREEN_HEIGHT) * 0.1;
 	if (sizeToScreen)
 	{
-		double scale = 1.0;
 		int w = img.cols;
 		int h = img.rows;
-		if (w > (HL_SCREEN_WIDTH - edgeWidth))
-		{
-			scale = (HL_SCREEN_WIDTH - edgeWidth) / double(w);
-			w *= scale;
-			h *= scale;
-		}
-
-		if (h > (HL_SCREEN_HEIGHT - edgeWidth))
-		{
-			scale = (HL_SCREEN_HEIGHT - edgeWidth) / double(h);
-			w *= scale;
-			h *= scale;
-		}
+		FitSizeToScreen(w, h);
 
 		cv::Mat resizedImg;
 		cv::resize(img, resizedImg, cv::Size(w, h));
@@ -61,6 +42,39 @@ inline void resizeShow(const std::string &name, const cv::Mat &img, bool sizeToS
 		cv::imshow(name, img);
 	}
 }
+
+
+////////////////////////////////////////////////////////////////////
+//The functions Related to Random variable
+
+inline cv::Scalar RandomColor()
+{
+	uchar b = rand() % 256;
+	uchar g = rand() % 256;
+	uchar r = rand() % 256;
+	return cv::Scalar(b, g, r);
+}
+
+inline cv::Vec3d RandomAxis()
+{
+	double theta = CV_2PI * (rand() / double(RAND_MAX));
+	double phi = CV_PI * (rand() / double(RAND_MAX));
+	/*double theta = CV_PI * 0.5;
+	double phi = CV_PI * 0.5;*/
+	return cv::Vec3d(sin(phi)*cos(theta), sin(phi)*sin(theta), cos(phi));
+}
+
+template <class T>
+inline T RandomInRange(T minValue, T maxValue)
+{
+	assert(minValue <= maxValue);
+	double ratio = rand() / (double(RAND_MAX) + 1);
+	return minValue + ratio * (maxValue - minValue);
+}
+
+
+////////////////////////////////////////////////////////////////////
+//The functions Related to Images Loading
 
 inline bool LoadSameSizeImages(std::vector<cv::Mat> &images, const std::string &dir, const std::string &image_suffix = "jpg")
 {
@@ -127,6 +141,10 @@ inline bool LoadDiffSizeImages(std::vector<cv::Mat> &images, const std::string &
 	return true;
 }
 
+
+////////////////////////////////////////////////////////////////////
+//The functions Related to ROI
+
 template <class T>
 bool GetOverlapRoi(const cv::Rect_<T> &roi1, const cv::Rect_<T> &roi2, cv::Rect_<T> &resultRoi)
 {
@@ -154,6 +172,118 @@ cv::Rect_<T> GetUnionRoi(const cv::Rect_<T> &roi1, const cv::Rect_<T> &roi2)
 	br.x = br1.x > br2.x ? br1.x : br2.x;
 	br.y = br1.y > br2.y ? br1.y : br2.y;
 	return cv::Rect_<T>(tl, br);
+}
+
+////////////////////////////////////////////////////////////////////
+//The functions Related to Drawing
+
+//Draw the Grid on the Img, if the total size of grid is lager than the input image, we resize the origin image
+//lineW defines the line width
+//drawGridPoint defines whether to draw the gridPoint and pRadius control the radius of grid point
+//Return Result ROI
+inline cv::Rect DrawGrid(cv::Mat &img, const cv::Point& gridDim, const cv::Size &gridSize, int lineW = 1, int pRadius = 1, bool drawGridPoint = true)
+{
+	assert(img.type() == CV_8UC3);
+	int padding = lineW;
+	cv::Size resultSize(gridDim.x * gridSize.width, gridDim.y * gridSize.height);
+	resultSize.width = std::max(img.cols, resultSize.width) + padding;
+	resultSize.height = std::max(img.rows, resultSize.height) + padding;
+
+	cv::Mat result(resultSize, CV_8UC3, cv::Scalar(0));
+	cv::Rect originROI(0, 0, img.cols, img.rows);
+	img.copyTo(result(originROI));
+
+	cv::Scalar rColor(255, 0, 255), cColor(0, 255, 255), pColor(255, 0, 0);
+	for (int i = 0, x = 0; i <= gridDim.x; i++, x += gridSize.width)
+	{
+		cv::Point start(x, 0), end(x, resultSize.height - 1);
+		cv::line(result, start, end, cColor, lineW, cv::LINE_AA);
+	}
+
+	for (int i = 0, y = 0; i <= gridDim.y; i++, y += gridSize.height)
+	{
+		cv::Point start(0, y), end(resultSize.width - 1, y);
+		cv::line(result, start, end, rColor, lineW, cv::LINE_AA);
+	}
+
+	if (drawGridPoint)
+	{
+		for (int i = 0, x = 0; i < gridDim.x + 1; i++, x += gridSize.width)
+		{
+			for (int j = 0, y = 0; j < gridDim.y + 1; j++, y += gridSize.height)
+			{
+				cv::circle(result, cv::Point(x, y), pRadius, pColor, -1, cv::LINE_AA);
+			}
+		}
+	}
+
+	img = result;
+
+	return cv::Rect(0, 0, resultSize.width, resultSize.height);
+}
+
+//Draw the Grid on the Img, which vertices maybe twisty
+//Return Result ROI
+inline cv::Rect DrawGridVertices(cv::Mat &img, cv::Rect imgROI, const std::vector<cv::Point2d> &vVertices, const cv::Point& gridDim, int lineW = 1, int pRadius = 1, bool drawGridPoint = true)
+{
+	assert(img.type() == CV_8UC3);
+	assert(vVertices.size() == (gridDim.x + 1) * (gridDim.y + 1));
+	assert(img.cols == imgROI.width && img.rows == imgROI.height);
+	cv::Point gridTl(vVertices[0]), gridBr = gridTl;
+	for (int i = 0; i < vVertices.size(); i++)
+	{
+		const cv::Point2d &pt = vVertices[i];
+		if (gridTl.x > pt.x)gridTl.x = floor(pt.x);
+		if (gridTl.y > pt.y)gridTl.y = floor(pt.y);
+		if (gridBr.x < pt.x)gridBr.x = ceil(pt.x);
+		if (gridBr.y < pt.y)gridBr.y = ceil(pt.y);
+	}
+
+	cv::Rect gridROI(gridTl, gridBr);
+	cv::Rect originROI(imgROI);
+	cv::Rect resultROI = GetUnionRoi(gridROI, originROI);
+	cv::Point shiftPt = -resultROI.tl();
+	originROI.x += shiftPt.x; originROI.y += shiftPt.y;
+	gridROI.x += shiftPt.x; gridROI.y += shiftPt.y;
+	int padding = lineW;
+	cv::Size resultSize(resultROI.width + padding, resultROI.height + padding);
+	cv::Mat result(resultSize, CV_8UC3, cv::Scalar(0));
+	
+	img.copyTo(result(originROI));
+	resultROI.width += padding;
+	resultROI.height += padding;
+
+	cv::Scalar rColor(255, 0, 255), cColor(0, 255, 255), pColor(255, 0, 0);
+	for (int i = 0, vIdx = 0; i <= gridDim.y; i++)
+	{
+		for (int j = 0; j <= gridDim.x; j++, vIdx++)
+		{
+			cv::Point start = vVertices[vIdx];
+			if (j < gridDim.x)
+			{
+				cv::Point end = vVertices[vIdx + 1];
+				cv::line(result, start + shiftPt, end + shiftPt, rColor, lineW, cv::LINE_AA);
+			}
+
+			if (i < gridDim.y)
+			{
+				cv::Point end = vVertices[vIdx + gridDim.x + 1];
+				cv::line(result, start + shiftPt, end + shiftPt, cColor, lineW, cv::LINE_AA);
+			}
+		}
+	}
+
+
+	if (drawGridPoint)
+	{
+		for (size_t i = 0; i < vVertices.size(); i++)
+		{
+			cv::circle(result, cv::Point(vVertices[i]) + shiftPt, pRadius, pColor, -1, cv::LINE_AA);
+		}
+	}
+
+	img = result;
+	return resultROI;
 }
 
 template <class T>
@@ -225,4 +355,17 @@ void GetRegularizedPoints(std::vector<cv::Point_<T>> &srcPts, std::vector<cv::Po
 	TInv.at<double>(1, 1) = scaleinvY;
 	TInv.at<double>(0, 2) = central.x;
 	TInv.at<double>(1, 2) = central.y;
+}
+
+template <class T>
+T customPow(T _x, T _y)
+{
+	if (_x >= 0)
+	{
+		return std::pow(_x, _y);
+	}
+	else
+	{
+		return -std::pow(-_x, _y);
+	}
 }
