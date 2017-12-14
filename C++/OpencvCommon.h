@@ -181,10 +181,13 @@ cv::Rect_<T> GetUnionRoi(const cv::Rect_<T> &roi1, const cv::Rect_<T> &roi2)
 //lineW defines the line width
 //drawGridPoint defines whether to draw the gridPoint and pRadius control the radius of grid point
 //Return Result ROI
-inline cv::Rect DrawGrid(cv::Mat &img, const cv::Point& gridDim, const cv::Size &gridSize, int lineW = 1, int pRadius = 1, bool drawGridPoint = true)
+//padding indicate the padding for height and width, if padding == -1 ,use the lineW as the padding
+inline cv::Rect DrawGrid(cv::Mat &img, const cv::Point& gridDim, const cv::Size &gridSize, int lineW = 1,
+						 int pRadius = 1, bool drawGridPoint = true, int padding = 0)
 {
 	assert(img.type() == CV_8UC3);
-	int padding = lineW;
+	if (padding == -1)padding = lineW;
+
 	cv::Size resultSize(gridDim.x * gridSize.width, gridDim.y * gridSize.height);
 	resultSize.width = std::max(img.cols, resultSize.width) + padding;
 	resultSize.height = std::max(img.rows, resultSize.height) + padding;
@@ -224,7 +227,9 @@ inline cv::Rect DrawGrid(cv::Mat &img, const cv::Point& gridDim, const cv::Size 
 
 //Draw the Grid on the Img, which vertices maybe twisty
 //Return Result ROI
-inline cv::Rect DrawGridVertices(cv::Mat &img, cv::Rect imgROI, const std::vector<cv::Point2d> &vVertices, const cv::Point& gridDim, int lineW = 1, int pRadius = 1, bool drawGridPoint = true)
+//padding indicate the padding for height and width, if padding == -1 ,use the lineW as the padding
+inline cv::Rect DrawGridVertices(cv::Mat &img, cv::Rect imgROI, const std::vector<cv::Point2d> &vVertices, const cv::Point& gridDim,
+								 int lineW = 1, int pRadius = 1, bool drawGridPoint = true, int padding = 0)
 {
 	assert(img.type() == CV_8UC3);
 	assert(vVertices.size() == (gridDim.x + 1) * (gridDim.y + 1));
@@ -245,7 +250,9 @@ inline cv::Rect DrawGridVertices(cv::Mat &img, cv::Rect imgROI, const std::vecto
 	cv::Point shiftPt = -resultROI.tl();
 	originROI.x += shiftPt.x; originROI.y += shiftPt.y;
 	gridROI.x += shiftPt.x; gridROI.y += shiftPt.y;
-	int padding = lineW;
+	
+	if (padding == -1)padding = lineW;
+
 	cv::Size resultSize(resultROI.width + padding, resultROI.height + padding);
 	cv::Mat result(resultSize, CV_8UC3, cv::Scalar(0));
 	
@@ -286,6 +293,62 @@ inline cv::Rect DrawGridVertices(cv::Mat &img, cv::Rect imgROI, const std::vecto
 	return resultROI;
 }
 
+inline cv::Rect DrawOuterContour(cv::Mat &img, cv::Rect imgROI, const std::vector<cv::Point2d> &vVertices, const cv::Point& gridDim,
+								 int lineW = 1, int padding = 0)
+{
+	assert(img.type() == CV_8UC3);
+	assert(vVertices.size() == (gridDim.x + 1) * (gridDim.y + 1));
+	assert(img.cols == imgROI.width && img.rows == imgROI.height);
+	cv::Point gridTl(vVertices[0]), gridBr = gridTl;
+	for (int i = 0; i < vVertices.size(); i++)
+	{
+		const cv::Point2d &pt = vVertices[i];
+		if (gridTl.x > pt.x)gridTl.x = floor(pt.x);
+		if (gridTl.y > pt.y)gridTl.y = floor(pt.y);
+		if (gridBr.x < pt.x)gridBr.x = ceil(pt.x);
+		if (gridBr.y < pt.y)gridBr.y = ceil(pt.y);
+	}
+
+	cv::Rect gridROI(gridTl, gridBr);
+	cv::Rect originROI(imgROI);
+	cv::Rect resultROI = GetUnionRoi(gridROI, originROI);
+	cv::Point shiftPt = -resultROI.tl();
+	originROI.x += shiftPt.x; originROI.y += shiftPt.y;
+	gridROI.x += shiftPt.x; gridROI.y += shiftPt.y;
+
+	if (padding == -1)padding = lineW;
+
+	cv::Size resultSize(resultROI.width + padding, resultROI.height + padding);
+	cv::Mat result(resultSize, CV_8UC3, cv::Scalar(0));
+
+	img.copyTo(result(originROI));
+	resultROI.width += padding;
+	resultROI.height += padding;
+
+	cv::Scalar rColor(255, 0, 255), cColor(0, 255, 255), pColor(255, 0, 0);
+	for (int i = 0, vIdx = 0; i <= gridDim.y; i++)
+	{
+		for (int j = 0; j <= gridDim.x; j++, vIdx++)
+		{
+			cv::Point start = vVertices[vIdx];
+			if (j < gridDim.x && i % gridDim.y == 0)
+			{
+				cv::Point end = vVertices[vIdx + 1];
+				cv::line(result, start + shiftPt, end + shiftPt, rColor, lineW, cv::LINE_AA);
+			}
+
+			if (i < gridDim.y && j % gridDim.x == 0)
+			{
+				cv::Point end = vVertices[vIdx + gridDim.x + 1];
+				cv::line(result, start + shiftPt, end + shiftPt, cColor, lineW, cv::LINE_AA);
+			}
+		}
+	}
+
+	img = result;
+	return resultROI;
+}
+
 template <class T>
 bool PointHTransform(const cv::Point_<T> &srcpt, const cv::Mat &H, cv::Point_<T> &dstpt)
 {
@@ -302,6 +365,19 @@ bool PointHTransform(const cv::Point_<T> &srcpt, const cv::Mat &H, cv::Point_<T>
 		dstpt.y = zinv*(srcpt.x * Hptr[3] + srcpt.y * Hptr[4] + Hptr[5]);
 		return true;
 	}
+}
+
+template <class T>
+bool PointSetHTransform(const std::vector<cv::Point_<T>> &vSrcPt, const cv::Mat &H,
+						std::vector<cv::Point_<T>> &vDstPt)
+{
+	vDstPt.resize(vSrcPt.size());
+	bool valid = true;
+	for (size_t i = 0; i < vSrcPt.size() && valid; i++)
+	{
+		valid &= PointHTransform(vSrcPt[i], H, vDstPt[i]);
+	}
+	return valid;
 }
 
 //centering the points and scaling to sqr(2), return regularized points and inverse transformation TInv
