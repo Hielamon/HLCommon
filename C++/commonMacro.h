@@ -1,7 +1,9 @@
 #pragma once
 
 #include <chrono>
+#include <string>
 #include <iostream>
+#include <cassert>
 
 //#define HL_CONNET(x, y) x##y
 //#define HL_CONNET2(x, y) HL_CONNET(x, y)
@@ -43,7 +45,9 @@ SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY 
 #define IntevalTime(sentence) { clock_t start = clock(); \
 sentence; \
 clock_t end = clock(); \
+SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY | */FOREGROUND_GREEN); \
 std::cout <<"\" "<< #sentence <<" \""<< " cost time :"<< end - start <<" ms"<<std::endl; \
+SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY |*/ FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE); \
 }
 
 #else
@@ -63,6 +67,32 @@ std::cerr<< expr << ". " << __FUNCTION__ \
 		<< ", " << __FILE__<< ", " << __LINE__ << std::endl; \
 SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY |*/ FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE);\
 exit(-1);}
+
+#define HL_CERR_RETURN_FALSE( expr ) {\
+SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY | */FOREGROUND_RED);\
+std::cout<< expr << ". " << __FUNCTION__ \
+		<< ", " << __FILE__<< ", " << __LINE__ << std::endl; \
+SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY |*/ FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE);\
+return false;}
+
+#define HL_WARNING( expr ) {\
+SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY | */FOREGROUND_BLUE);\
+std::cout<< expr << ". " << __FUNCTION__ \
+		<< ", " << __FILE__<< ", " << __LINE__ << std::endl; \
+SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY |*/ FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE);\
+}
+
+#define HL_GENERAL_LOG( expr ) {\
+SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY | */FOREGROUND_GREEN | FOREGROUND_RED);\
+std::cout<< expr << std::endl; \
+SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY |*/ FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE);\
+}
+
+#define HL_GENERAL_RED_LOG( expr ) {\
+SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY | FOREGROUND_GREEN |*/ FOREGROUND_RED);\
+std::cout<< expr << std::endl; \
+SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), /*FOREGROUND_INTENSITY |*/ FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE);\
+}
 
 #endif // HL_LOG
 
