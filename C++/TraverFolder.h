@@ -86,7 +86,7 @@ public:
 		dir = opendir(folder_path_.c_str());
 #endif // linux
 	}
-	void getFileFullPath(std::vector<std::string> &filelist, const std::string& suffix)
+	void getFileFullPath(std::vector<std::string> &filelist, const std::string& suffix = "")
 	{
 		if (IsFind())
 		{
@@ -115,7 +115,7 @@ public:
 					else
 					{
 						std::string cuttail = filefullpath.substr(suffixpos + 1, filefullpath.size() - 1 - suffixpos);
-						if (cuttail == suffix)filelist.push_back(filefullpath);
+						if (cuttail == suffix || suffix == "*")filelist.push_back(filefullpath);
 					}
 				}
 			}

@@ -25,6 +25,12 @@ inline bool CheckInSize(const cv::Point_<T> &pt, const cv::Size &size)
 	return pt.x >= 0 && pt.y >= 0 && pt.x <= (size.width - 1) && pt.y <= (size.height - 1);
 }
 
+template <class T>
+inline bool CheckInPaddingSize(const cv::Point_<T> &pt, const cv::Size &size, int padding = 0)
+{
+	return pt.x >= -padding && pt.y >= -padding && pt.x <= (size.width - 1 + padding) && pt.y <= (size.height - 1 + padding);
+}
+
 inline void resizeShow(const std::string &name, const cv::Mat &img, bool sizeToScreen = true)
 {
 	if (sizeToScreen)
@@ -183,7 +189,10 @@ cv::Rect_<T> GetUnionRoi(const cv::Rect_<T> &roi1, const cv::Rect_<T> &roi2)
 //Return Result ROI
 //padding indicate the padding for height and width, if padding == -1 ,use the lineW as the padding
 inline cv::Rect DrawGrid(cv::Mat &img, const cv::Point& gridDim, const cv::Size &gridSize, int lineW = 1,
-						 int pRadius = 1, bool drawGridPoint = true, int padding = 0)
+						 int pRadius = 1, bool drawGridPoint = true, int padding = 0, 
+						 cv::Scalar rColor = cv::Scalar(255, 0, 255), 
+						 cv::Scalar cColor = cv::Scalar(0, 255, 255), 
+						 cv::Scalar pColor = cv::Scalar(255, 0, 0), int lineType = cv::LINE_AA)
 {
 	assert(img.type() == CV_8UC3);
 	if (padding == -1)padding = lineW;
@@ -196,17 +205,16 @@ inline cv::Rect DrawGrid(cv::Mat &img, const cv::Point& gridDim, const cv::Size 
 	cv::Rect originROI(0, 0, img.cols, img.rows);
 	img.copyTo(result(originROI));
 
-	cv::Scalar rColor(255, 0, 255), cColor(0, 255, 255), pColor(255, 0, 0);
 	for (int i = 0, x = 0; i <= gridDim.x; i++, x += gridSize.width)
 	{
 		cv::Point start(x, 0), end(x, resultSize.height - 1);
-		cv::line(result, start, end, cColor, lineW, cv::LINE_AA);
+		cv::line(result, start, end, cColor, lineW, lineType);
 	}
 
 	for (int i = 0, y = 0; i <= gridDim.y; i++, y += gridSize.height)
 	{
 		cv::Point start(0, y), end(resultSize.width - 1, y);
-		cv::line(result, start, end, rColor, lineW, cv::LINE_AA);
+		cv::line(result, start, end, rColor, lineW, lineType);
 	}
 
 	if (drawGridPoint)
@@ -215,7 +223,7 @@ inline cv::Rect DrawGrid(cv::Mat &img, const cv::Point& gridDim, const cv::Size 
 		{
 			for (int j = 0, y = 0; j < gridDim.y + 1; j++, y += gridSize.height)
 			{
-				cv::circle(result, cv::Point(x, y), pRadius, pColor, -1, cv::LINE_AA);
+				cv::circle(result, cv::Point(x, y), pRadius, pColor, -1, lineType);
 			}
 		}
 	}
@@ -347,6 +355,32 @@ inline cv::Rect DrawOuterContour(cv::Mat &img, cv::Rect imgROI, const std::vecto
 
 	img = result;
 	return resultROI;
+}
+
+template <class T>
+inline void DrawPoints(cv::Mat &img, const std::vector<cv::Point_<T>> vPt, std::vector<uchar> mask, int pRadius = 1, cv::Scalar color = cv::Scalar(-1), double scale = 1.0)
+{
+	bool IsRandColor = color == cv::Scalar(-1);
+	if (mask.size() != vPt.size() && !mask.empty())
+	{
+		std::cout << "The Mask is not valid" << std::endl;
+		return;
+	}
+
+	for (size_t i = 0; i < vPt.size(); i++)
+	{
+		if (!mask.empty() && mask[i] == 0)continue;
+
+		if (IsRandColor)
+		{
+			uchar r = rand() % 255;
+			uchar g = rand() % 255;
+			uchar b = rand() % 255;
+			color = cv::Scalar(b, g, r);
+		}
+		
+		cv::circle(img, vPt[i] * scale, pRadius, color, -1);
+	}
 }
 
 template <class T>
